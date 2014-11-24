@@ -1,4 +1,4 @@
-FROM ubuntu
+FROM consul-agent
 MAINTAINER Givi Khojanashvili <gigovich@gmail.com>
 
 # Add the PostgreSQL PGP key to verify their Debian packages.
@@ -12,26 +12,18 @@ RUN echo "deb http://apt.postgresql.org/pub/repos/apt/ precise-pgdg main" > /etc
 # Install ``python-software-properties``, ``software-properties-common`` and PostgreSQL 9.3
 #  There are some warnings (in red) that show up during the build. You can hide
 #  them by prefixing each apt-get statement with DEBIAN_FRONTEND=noninteractive
-RUN apt-get update
-RUN apt-get install -y python-software-properties
-RUN apt-get install -y software-properties-common
-RUN apt-get install -y postgresql-9.3
-RUN apt-get install -y postgresql-client-9.3
-RUN apt-get install -y postgresql-contrib-9.3
+RUN apt-get update && apt-get install -y \
+python-software-properties \
+software-properties-common \
+postgresql-9.3 \
+postgresql-client-9.3 \
+postgresql-contrib-9.3
 
 # Note: The official Debian and Ubuntu images automatically ``apt-get clean``
 # after each ``apt-get``
 
 # Run the rest of the commands as the ``postgres`` user created by the ``postgres-9.3`` package when it was ``apt-get installed``
 USER postgres
-
-# Create a PostgreSQL role named ``docker`` with ``docker`` as the password and
-# then create a database `docker` owned by the ``docker`` role.
-# Note: here we use ``&&\`` to run commands one after the other - the ``\``
-#       allows the RUN command to span multiple lines.
-RUN    /etc/init.d/postgresql start &&\
-    psql --command "CREATE USER docker WITH SUPERUSER PASSWORD 'docker';" &&\
-    createdb -O docker docker
 
 # Adjust PostgreSQL configuration so that remote connections to the
 # database are possible. 
@@ -40,11 +32,17 @@ RUN echo "host all  all    0.0.0.0/0  md5" >> /etc/postgresql/9.3/main/pg_hba.co
 # And add ``listen_addresses`` to ``/etc/postgresql/9.3/main/postgresql.conf``
 RUN echo "listen_addresses='*'" >> /etc/postgresql/9.3/main/postgresql.conf
 
+# Add PostgreSQL supervisord config to run instance
+ADD supervisor/postgresql.conf /etc/supervisor/conf.d/postgresql.conf
+
+# Add service disocvery config file
+ADD consul/postgresql.json /etc/consul/consul.d/postgresql.json
+
 # Expose the PostgreSQL port
 EXPOSE 5432
 
 # Add VOLUMEs to allow backup of config, logs and databases
 VOLUME  ["/etc/postgresql/9.3", "/var/log/postgresql/9.3", "/var/lib/postgresql"]
 
-# Set the default command to run when starting the container
-CMD ["/usr/lib/postgresql/9.3/bin/postgres", "-D", "/var/lib/postgresql/9.3", "-c", "config_file=/etc/postgresql/9.3/main/postgresql.conf"]
+USER root
+CMD ["/usr/bin/supervisord"]
