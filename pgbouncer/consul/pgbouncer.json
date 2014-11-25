@@ -1,0 +1,6 @@
+{
+    "service": {
+        "name": "pgbouncer",
+        "port": 6432
+    }
+}
